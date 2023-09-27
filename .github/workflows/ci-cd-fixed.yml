@@ -1,0 +1,109 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  buildAndTest:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_ENV: test
+
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+
+      - name: Install Angular dependencies
+        run: npm ci
+
+      - name: Run Angular Tests
+        run: npm run test:coverage
+
+      - name: Install Express dependencies
+        run: npm --prefix ./server ci
+
+      - name: Run Linting
+        run: npm --prefix ./server run lint 
+
+      - name: Run Migration
+        run: npm --prefix ./server run migrate
+
+      - name: Run Express Tests
+        run: npm --prefix ./server run coverage
+
+  push:
+    runs-on: ubuntu-latest
+    needs: buildAndTest
+    env:
+      CONTAINER_REGISTRY_URL: "placeholder-registry-url"
+      CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install AWS cli
+        uses: unfor19/install-aws-cli-action@master
+        with:
+          version: 2
+
+      - name: Login to AWS ECR
+        run: |
+          echo 'Login via AWS CLI'
+          aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin "$CONTAINER_REGISTRY_URL"
+
+      - name: Build and push Docker image
+        run: |
+          echo 'Build and push image'
+          docker build --tag "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA" .
+          docker push "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: push
+    env:
+      CONTAINER_REGISTRY_URL: "placeholder-registry-url"
+      CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
+      S3_DEPLOY_BUCKET: "placeholder-deploy-bucket"
+      ELASTIC_BEANSTALK_APP_NAME: "placeholder-app-name"
+      ELASTIC_BEANSTALK_ENV_NAME: "placeholder-env-name"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Copy Dockerrun.aws.json to S3
+        run: |
+          echo "Copying Dockerrun.aws.json to S3"
+          aws s3 cp Dockerrun.aws.json "s3://$S3_DEPLOY_BUCKET"
+
+      - name: Deploy new application version to Elastic Beanstalk
+        run: |
+          echo "Deploying new application version"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+            --version-label "$GITHUB_SHA" \
+            --source-bundle S3Bucket="$S3_DEPLOY_BUCKET",S3Key="Dockerrun.aws.json" \
+            --no-auto-create-application
+          aws elasticbeanstalk update-environment \
+            --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+            --environment-name "$ELASTIC_BEANSTALK_ENV_NAME" \
+            --version-label "$GITHUB_SHA"
