@@ -59,30 +59,30 @@ jobs:
   push:
     runs-on: ubuntu-latest
     needs: buildAndTest
-    env:
-      CONTAINER_REGISTRY_URL: "664047078509.dkr.ecr.eu-west-2.amazonaws.com/bvmm-repo"
-      CONTAINER_REPOSITORY_NAME: "bvmm-repo"
 
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v2
-
-      - name: Install AWS cli
-        uses: unfor19/install-aws-cli-action@master
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          version: 2
-
-      - name: Login to AWS ECR
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-2
+    
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+    
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: bvmm-repo
+          IMAGE_TAG: task-listing-app-image
         run: |
-          echo 'Login via AWS CLI'
-          aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin "$CONTAINER_REGISTRY_URL"
-
-      - name: Build and push Docker image
-        run: |
-          echo 'Build and push image'
-          docker build --tag "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA" .
-          docker push "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA"
-
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
   # deploy:
   #   runs-on: ubuntu-latest
   #   needs: push
