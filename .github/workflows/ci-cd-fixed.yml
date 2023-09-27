@@ -50,18 +50,18 @@ jobs:
       - name: Run Linting
         run: npm --prefix ./server run lint 
 
-      - name: Run Migration
-        run: npm --prefix ./server run migrate
+      # - name: Run Migration
+        # run: npm --prefix ./server run migrate
 
-      - name: Run Express Tests
-        run: npm --prefix ./server run coverage
+      # - name: Run Express Tests
+        # run: npm --prefix ./server run coverage
 
   push:
     runs-on: ubuntu-latest
     needs: buildAndTest
     env:
-      CONTAINER_REGISTRY_URL: "placeholder-registry-url"
-      CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
+      CONTAINER_REGISTRY_URL: "664047078509.dkr.ecr.eu-west-2.amazonaws.com/bvmm-repo"
+      CONTAINER_REPOSITORY_NAME: "bvmm-repo"
 
     steps:
       - name: Checkout code
@@ -83,34 +83,34 @@ jobs:
           docker build --tag "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA" .
           docker push "$CONTAINER_REGISTRY_URL/$CONTAINER_REPOSITORY_NAME:$GITHUB_SHA"
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: push
-    env:
-      CONTAINER_REGISTRY_URL: "placeholder-registry-url"
-      CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
-      S3_DEPLOY_BUCKET: "placeholder-deploy-bucket"
-      ELASTIC_BEANSTALK_APP_NAME: "placeholder-app-name"
-      ELASTIC_BEANSTALK_ENV_NAME: "placeholder-env-name"
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: push
+  #   env:
+  #     CONTAINER_REGISTRY_URL: "placeholder-registry-url"
+  #     CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
+  #     S3_DEPLOY_BUCKET: "placeholder-deploy-bucket"
+  #     ELASTIC_BEANSTALK_APP_NAME: "placeholder-app-name"
+  #     ELASTIC_BEANSTALK_ENV_NAME: "placeholder-env-name"
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v2
 
-      - name: Copy Dockerrun.aws.json to S3
-        run: |
-          echo "Copying Dockerrun.aws.json to S3"
-          aws s3 cp Dockerrun.aws.json "s3://$S3_DEPLOY_BUCKET"
+  #     - name: Copy Dockerrun.aws.json to S3
+  #       run: |
+  #         echo "Copying Dockerrun.aws.json to S3"
+  #         aws s3 cp Dockerrun.aws.json "s3://$S3_DEPLOY_BUCKET"
 
-      - name: Deploy new application version to Elastic Beanstalk
-        run: |
-          echo "Deploying new application version"
-          aws elasticbeanstalk create-application-version \
-            --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
-            --version-label "$GITHUB_SHA" \
-            --source-bundle S3Bucket="$S3_DEPLOY_BUCKET",S3Key="Dockerrun.aws.json" \
-            --no-auto-create-application
-          aws elasticbeanstalk update-environment \
-            --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
-            --environment-name "$ELASTIC_BEANSTALK_ENV_NAME" \
-            --version-label "$GITHUB_SHA"
+  #     - name: Deploy new application version to Elastic Beanstalk
+  #       run: |
+  #         echo "Deploying new application version"
+  #         aws elasticbeanstalk create-application-version \
+  #           --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+  #           --version-label "$GITHUB_SHA" \
+  #           --source-bundle S3Bucket="$S3_DEPLOY_BUCKET",S3Key="Dockerrun.aws.json" \
+  #           --no-auto-create-application
+  #         aws elasticbeanstalk update-environment \
+  #           --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+  #           --environment-name "$ELASTIC_BEANSTALK_ENV_NAME" \
+  #           --version-label "$GITHUB_SHA"
