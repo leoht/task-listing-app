@@ -1,0 +1,116 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  buildAndTest:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_ENV: test
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16.x'
+
+      - name: Install Angular dependencies
+        run: npm ci
+
+      - name: Run Angular Tests
+        run: npm run test:coverage
+
+      - name: Install Express dependencies
+        run: npm --prefix ./server ci
+
+      - name: Run Linting
+        run: npm --prefix ./server run lint 
+
+      # - name: Run Migration
+        # run: npm --prefix ./server run migrate
+
+      # - name: Run Express Tests
+        # run: npm --prefix ./server run coverage
+
+  push:
+    runs-on: ubuntu-latest
+    needs: buildAndTest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-2
+    
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+    
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: bvmm-repo
+          IMAGE_TAG: task-listing-app-image-leo
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: push
+  #   env:
+  #     CONTAINER_REGISTRY_URL: "placeholder-registry-url"
+  #     CONTAINER_REPOSITORY_NAME: "placeholder-repo-name"
+  #     S3_DEPLOY_BUCKET: "placeholder-deploy-bucket"
+  #     ELASTIC_BEANSTALK_APP_NAME: "placeholder-app-name"
+  #     ELASTIC_BEANSTALK_ENV_NAME: "placeholder-env-name"
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v2
+
+  #     - name: Copy Dockerrun.aws.json to S3
+  #       run: |
+  #         echo "Copying Dockerrun.aws.json to S3"
+  #         aws s3 cp Dockerrun.aws.json "s3://$S3_DEPLOY_BUCKET"
+
+  #     - name: Deploy new application version to Elastic Beanstalk
+  #       run: |
+  #         echo "Deploying new application version"
+  #         aws elasticbeanstalk create-application-version \
+  #           --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+  #           --version-label "$GITHUB_SHA" \
+  #           --source-bundle S3Bucket="$S3_DEPLOY_BUCKET",S3Key="Dockerrun.aws.json" \
+  #           --no-auto-create-application
+  #         aws elasticbeanstalk update-environment \
+  #           --application-name "$ELASTIC_BEANSTALK_APP_NAME" \
+  #           --environment-name "$ELASTIC_BEANSTALK_ENV_NAME" \
+  #           --version-label "$GITHUB_SHA"
